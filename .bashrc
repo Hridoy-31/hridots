@@ -24,3 +24,21 @@ alias e="nano"
 alias config="cd ~/.config"
 alias downloads="cd ~/Downloads"
 alias hi="notify-send 'Hi there!' 'Welcome to the Hridebian desktop! ' -i ''"
+alias egrep='grep --color=auto'
+
+# Environment variables
+export PATH="~/scripts:$PATH" 
+export PATH="~/.local/bin:$PATH"
+export PATH="/usr/local/go/bin:$PATH"
+export VISUAL=nano;
+export EDITOR=nano;
+
+# Color codes
+RED="\\[\\e[1;31m\\]"
+GREEN="\\[\\e[1;32m\\]"
+YELLOW="\\[\\e[1;33m\\]"
+BLUE="\\[\\e[1;34m\\]"
+MAGENTA="\\[\\e[1;35m\\]"
+CYAN="\\[\\e[1;36m\\]"
+WHITE="\\[\\e[1;37m\\]"
+ENDC="\\[\\e[0m\\]"
