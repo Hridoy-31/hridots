@@ -42,3 +42,6 @@ MAGENTA="\\[\\e[1;35m\\]"
 CYAN="\\[\\e[1;36m\\]"
 WHITE="\\[\\e[1;37m\\]"
 ENDC="\\[\\e[0m\\]"
+
+# Shell prompt
+PS1="${MAGENTA}\@ ${GREEN}\u ${WHITE}at ${YELLOW}\h ${WHITE}in ${BLUE}\w \n${CYAN}\$${ENDC} "
