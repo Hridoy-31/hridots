@@ -1,0 +1,7 @@
+#!/bin/bash
+
+get_current_workspace() {
+	local workspace_index=$(xdotool get_desktop)
+	local workspace_number=$((workspace_index + 1))
+	echo "$workspace_number"
+}
