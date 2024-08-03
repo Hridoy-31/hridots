@@ -5,3 +5,21 @@ get_current_workspace() {
 	local workspace_number=$((workspace_index + 1))
 	echo "$workspace_number"
 }
+
+
+notify_workspace_change() {
+	local workspace_number=$1
+	dunstify "Workspace Changed" "Switched to workspace $workspace_number"
+}
+
+
+# Main loop
+current_workspace=$(get_current_workspace)
+while true; do
+	new_workspace=$(get_current_workspace)
+	if [[ "$new_workspace" != "$current_workspace"]]; then
+		notify_workspace_change "$new_workspace"
+		current_workspace="$new_workspace"
+	fi
+	sleep 1
+done
