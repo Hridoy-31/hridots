@@ -24,3 +24,19 @@ FORMAT='$VOL_ICON ${VOL_LEVEL}%  $ICON_NODE $NODE_NICKNAME'
 declare -A NODE_NICKNAMES
 declare -a ICONS_VOLUME
 declare -a NODE_BLACKLIST
+
+SINK_OR_SOURCE="ink"
+
+# Environment & global constants
+# Some pactl calls depend on English output
+export LC_ALL=C 
+END_COLOR="%{F-}"
+
+function getCurNode() {
+    if ! pactl info &>/dev/null; then return 1; fi
+    
+    local curNodeName
+
+    curNodeName=$(pactl info | awk "/Default S${SINK_OR_SOURCE}: / {print \$3}")
+    curNode=$(pactl list s${SINK_OR_SOURCE}s | grep -B 4 -E "Name: $curNodeName\$" | sed -nE "s/^S${SINK_OR_SOURCE} #([0-9]+)$/\1/p")
+}
