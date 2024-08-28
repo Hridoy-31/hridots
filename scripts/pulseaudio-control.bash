@@ -77,3 +77,34 @@ function getNickname() {
         NODE_NICKNAME="S${SINK_OR_SOURCES} #$1"
     fi
 }
+
+function getNicknameFromProp() {
+    local nickname_prop="$1"
+    local for_name="$2"
+
+    NODE_NICKNAME=
+
+    while read -r property value; do
+        case "$property" in
+            Name:)
+                node_name="$value"
+                unset node_desc
+                ;;
+            "$nickname_prop")
+                if [ "$node_name" != "$for_name" ]; then
+                    continue
+                fi
+                NODE_NICKNAME="${value:3:-1}"
+                break
+                ;;
+        esac
+    done < <(pactl list s${SINK_OR_SOURCE}s)
+}
+
+function getIsMuted() {
+    IS_MUTED=$(pactl list s${SINK_OR_SOURCE}s | grep -E "^S${SINK_OR_SOURCE} #$1\$" -A 15 | awk '/Mute: / {print $2}')
+}
+
+function getSinkInputs() {
+    sinkInputs=$(pactl list sink-inputs | grep -B 4 "Sink: $1" | sed -nE "s/^Sink Input #([0-9]+)\$/\1/p")
+}
