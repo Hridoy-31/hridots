@@ -108,3 +108,43 @@ function getIsMuted() {
 function getSinkInputs() {
     sinkInputs=$(pactl list sink-inputs | grep -B 4 "Sink: $1" | sed -nE "s/^Sink Input #([0-9]+)\$/\1/p")
 }
+
+function getSourceOutputs() {
+    sourceOutputs=$(pactl list source-outputs | grep -B 4 "Source: $1" | sed -nE "s/^Source Output #([0-9]+)\$/\1/p")
+}
+
+function volUp() {
+    if ! getCurNode; then
+        echo "PulseAudio is not running"
+        return 1
+    fi
+
+    getCurVol "$curNode"
+    local maxLimit=$((VOLUME_MAX - VOLUME_STEP))
+
+    # Checking the volume upper bounds so that if VOLUME_MAX was 100% and the
+    # increase percentage was 3%, a 99% volume would top at 100% instead
+    # of 102%. If the volume is above the maximum limit, nothing is done.
+    if [ "$VOL_LEVEL" -le "$VOLUME_MAX" ] && [ "$VOL_LEVEL" -ge "$maxLimit" ]; then
+        pactl set-s${SINK_OR_SOURCE}-volume "$curNode" "$VOLUME_MAX%"
+    elif [ "$VOL_LEVEL" -lt "$maxLimit" ]; then
+        pactl set-s${SINK_OR_SOURCE}-volume "$curNode" "+$VOLUME_STEP%"
+    fi
+
+    if [ $OSD = "yes" ]; then showOSD "$curNode"; fi
+    if [ $AUTOSYNC = "yes" ]; then volSync; fi
+}
+
+function volDown() {
+    # Pactl already handles the volume lower bounds so that negative values
+    # are ignored.
+    if ! getCurNode; then
+        echo "PulseAudio is not running"
+        return 1
+    fi
+
+    pactl set-s${SINK_OR_SOURCE}-volume "$curNode" "-$VOLUME_STEP%"
+
+    if [ $OSD = "yes" ]; then showOSD "$curNode"; fi
+    if [ $AUTOSYNC = "yes" ]; then volSync; fi
+}
