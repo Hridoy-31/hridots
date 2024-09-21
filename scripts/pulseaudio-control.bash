@@ -148,3 +148,116 @@ function volDown() {
     if [ $OSD = "yes" ]; then showOSD "$curNode"; fi
     if [ $AUTOSYNC = "yes" ]; then volSync; fi
 }
+
+function volSync() {
+    # This will only be called if $AUTOSYNC is `yes`.
+
+    if ! getCurNode; then
+        echo "PulseAudio is not running"
+        return 1
+    fi
+
+    getCurVol "$curNode"
+
+    if [[ "$NODE_TYPE" = "output" ]]; then
+        getSinkInputs "$curNode"
+
+        for each in $sinkInputs; do
+            pactl "set-sink-input-volume" "$each" "$VOL_LEVEL%"
+        done
+    else 
+        getSourceOutputs "$curNode"
+
+        for each in $sourceOutputs; do
+            pactl "set-source-output-volume" "$each" "$VOL_LEVEL%"
+        done
+    fi
+}
+
+function volMute() {
+    if ! getCurNode; then
+        echo "PulseAudio is not running"
+        return 1
+    fi
+
+    if [ "$1" == "toggle" ]; then
+        getIsMuted "$curNode"
+        if [ "$IS_MUTED" = "yes" ]; then
+            pactl set-s${SINK_OR_SOURCE}-mute "$curNode" "no"
+        else
+            pactl set-s${SINK_OR_SOURCE}-mute "$curNode" "yes"
+        fi
+    elif [ "$1" = "mute" ]; then
+        pactl set-s${SINK_OR_SOURCE}-mute "$curNode" "yes"
+    elif [ "$1" = "unmute" ]; then
+        pactl set-s${SINK_OR_SOURCE}-mute "$curNode" "no"
+    fi
+
+    if [ $OSD = "yes" ]; then showOSD "$curNode"; fi
+}
+
+function nextNode() {
+    if ! getCurNode; then
+        echo "PulseAudio is not running"
+        return 1
+    fi
+
+    nodes=()
+    local i=0
+    while read -r line; do
+        index=$(echo "$line" | cut -f1)
+        name=$(echo "$line" | cut -f2)
+
+        for node in "${NODE_BLACKLIST[@]}"; do
+            # Disable Shellcheck warning for Glob-Matching
+            #shellcheck disable=SC2053
+            if [[ "$name" == $node ]]; then
+                continue 2
+            fi
+        done
+
+        nodes[$1]="$index"
+        i=$((i+1))
+    done < <(pactl list short s${SINK_OR_SOURCE}s | sort -n)
+
+    if [ ${#nodes[@]} -eq 0 ]; then return; fi
+
+    local newNode
+    if [ "$curNode" -ge "${nodes[-1]}" ]; then
+        newNode=${nodes[0]}
+    else 
+        for node in "${nodes[@]}"; do
+            if [ "$curNode" -lt "$node" ]; then
+                newNode=$node
+                break
+            fi
+        done
+    fi
+
+    pactl set-default-s${SINK_OR_SOURCE} "$newNode"
+
+    local inputs
+
+    if [[ "$NODE_TYPE" = "output" ]]; then
+        inputs="$(pactl list short sink-inputs | cut -f 1)"
+        for i in $inputs; done
+            pactl move-sink-input "$i" "$newNode"
+        done
+    else
+        outputs="$(pactl list short source-outputs | cut -f 1)"
+        for i in $outputs; do
+            pactl move-source-output "$i" "$newNode"
+        done
+    fi
+
+    if [ $NOTIFICATIONS = "yes" ]; then
+        getNickname "$newNode"
+
+        if command -v dunstify &>/dev/null; then
+            notify="dunstify --replace 201839192"
+        else 
+            notify="notify-send"
+        fi
+        $notify "PulseAudio" "Changed $NODE_TYPE to $NODE_NICKNAME" --icon=audio-headphones-symbolic &
+    fi
+}
