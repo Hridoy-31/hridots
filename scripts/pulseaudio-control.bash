@@ -261,3 +261,302 @@ function nextNode() {
         $notify "PulseAudio" "Changed $NODE_TYPE to $NODE_NICKNAME" --icon=audio-headphones-symbolic &
     fi
 }
+
+function showOSD() {
+    if [ -z "$1" ]; then
+        curNode="$1"
+    else
+        getCurNode
+    fi
+
+    getCurVol "$curNode"
+    getIsMuted "$curNode"
+    qdbus org.kde.kded /modules/kosd showVolume "$VOL_LEVEL" "$IS_MUTED"
+}
+
+function listen() {
+    output
+
+    pactl subscribe 2>/dev/null | grep --line-buffered -e "on \(card\|s${SINK_OR_SOURCE}\|server\)" | {
+        while read -r; do
+            output
+
+            read -r -d '' -t "$LISTEN_TIMEOUT" -n 10000
+
+            output
+        done
+    }
+}
+
+function output() {
+    if ! getCurNode; then
+        echo "PulseAudio is not running"
+        return 1
+    fi
+
+    getCurVol "$curNode"
+    getIsMuted "$curNode"
+
+    local iconsLen=${#ICONS_VOLUME[@]}
+    if [ "$iconsLen" -ne 0 ]; then
+        local volSplit=$((VOLUME_MAX / iconsLen))
+        for i in $(seq 1 "$iconsLen"); do
+            if [ $((i * volSplit)) -ge "$VOL_LEVEL" ]; then
+                VOL_ICON="${ICONS_VOLUME[$((i-1))]}"
+                break
+            fi
+        done
+    else
+        VOL_ICON=""
+    fi
+
+    getNickname "$curNode"
+
+    if [ "$IS_MUTED" = "yes" ]; then
+        # shellcheck disable=SC2034
+        VOL_ICON=$ICON_MUTED
+        echo "${COLOR_MUTED}$(eval echo "$FORMAT")${END_COLOR}"
+    else
+        eval echo "$FORMAT"
+    fi
+}
+
+function usage() {
+    echo "\
+Usage: $0 [OPTION ...] ACTION
+
+Terminology: A node represents either a sink (output) or source (input).
+
+Options:
+    --autosync | --no-autosync
+        Same volume for all programs.
+        Default: \"$AUTOSYNC\"
+    --color-muted <rrggbb>
+        Color to show when muted.
+        Default: \"${COLOR_MUTED:4:-1}\"
+    --notifications | --no-notifications
+        Notifications when changing nodes.
+        Default: \"$NOTIFICATIONS\"
+    --osd | --no-osd
+        KDE's On Screen Display (OSD) message.
+        Default: \"$OSD\"
+    --icon-muted <icon>
+        Muted icon.
+        Default: none
+    --icon-node <icon>
+        Node icon.
+        Default: none
+    --format <string>
+        Output string.
+        Remember to pass this argument wrapped in single quotes (\`'\`) instead of double quotes (\`\"\`) to avoid your shell from evaluating the
+        variables early.
+        Available variables:
+        * \$VOL_ICON
+        * \$VOL_LEVEL
+        * \$ICON_NODE
+        * \$NODE_NICKNAME
+        * \$IS_MUTED (yes/no)
+        Default: '$FORMAT'
+    --icons-volume <icon>[,<icon> ...]
+        Icons for volume, from lower to higher.
+        Default: none
+    --node-type <node_type>
+        Whether to consider PulseAudio sinks (output) or sources (input).
+        All the operations of pulseaudio-control will apply to one of the two.
+        Pass \`input\` for the sources, e.g. a microphone.
+        Pass \`output\` for the sinks, e.g. speakers, headphones.
+        Default: \"$NODE_TYPE\"
+    --volume-max <int>
+        Maximum volume.
+        Default: \"$VOLUME_MAX\"
+    --volume-step <int>
+        Step size of volume.
+        Default: \"$VOLUME_STEP\"
+    --node-blacklist <name>[,<name> ...]
+        Nodes to ignore when switching.
+        Default: none
+    --node-nicknames-from <prop>
+        Getting node names from pactl properties.
+        Default: none
+    --node-nickname <name>:<nick>
+        Assign nickname to a given node name.
+        Default: none
+    --listen-timeout-secs
+        Timeout for updating the output string.
+        Default: \"$LISTEN_TIMEOUT\"
+
+Actions:
+    help            display this message and exit
+    output          print the PulseAudio status once
+    listen          listen for changes in PulseAudio to automatically update this script's output
+    up, down        increase or decrease the default node's volume
+    mute, unmute    mute or unmute the default node's audio
+    togmute         switch between muted and unmuted
+    next-node       switch to the next available node
+    sync            synchronize all the output stream volume to be the same as the current node's volume
+    "        
+}
+
+function getOptVal() {
+    if [[ "$1" = *=* ]]; then
+        val="${1//*=/}"
+        return 1
+    fi
+
+    val="$2"
+}
+
+while [[ "$1" = --* ]]; do
+    unset arg
+    unset val
+
+    arg="$1"
+    case "$arg" in
+        --autosync)
+            AUTOSYNC=yes
+            ;;
+        --no-autosync)
+            AUTOSYNC=no
+            ;;
+        --color-muted|--colour-muted)
+            if getOptVal "$@"; then shift; fi
+            COLOR_MUTED="%{F#$val}"
+            ;;
+        --notifications)
+            NOTIFICATIONS=yes
+            ;;
+        --no-notifications)
+            NOTIFICATIONS=no
+            ;;
+        --osd)
+            OSD=yes
+            ;;
+        --no-osd)
+            OSD=no
+            ;;
+        --icon-muted)
+            if getOptVal "$@"; then shift; fi
+            ICON_MUTED="$val"
+            ;;
+        --icon-node)
+            if getOptVal "$@"; then shift; fi
+            # shellcheck disable=SC2034
+            ICON_NODE="$val"
+            ;;
+        --icons-volume)
+            if getOptVal "$@"; then shift; fi
+            IFS=, read -r -a ICONS_VOLUME <<< "${val//[[:space:]]/}"
+            ;;
+        --volume-max)
+            if getOptVal "$@"; then shift; fi
+            VOLUME_MAX="$val"
+            ;;
+        --volume-step)
+            if getOptVal "$@"; then shift; fi
+            VOLUME_STEP="$val"
+            ;;
+        --node-blacklist)
+            if getOptVal "$@"; then shift; fi
+            IFS=, read -r -a NODE_BLACKLIST <<< "${val//[[:space:]]/}"
+            ;;
+        --node-nicknames-from)
+            if getOptVal "$@"; then shift; fi
+            NODE_NICKNAMES_PROP="$val"
+            ;;
+        --node-nickname)
+            if getOptVal "$@"; then shift; fi
+            NODE_NICKNAMES["${val//:*/}"]="${val//*:}"
+            ;;
+        --format)
+            if getOptVal "$@"; then shift; fi
+            FORMAT="$val"
+            ;;
+        --node-type)
+            if getOptVal "$@"; then shift; fi
+            if [[ "$val" != "output" && "$val" != "input" ]]; then
+                echo "node-type must be 'output' or 'input', got '$val'" >&2
+                exit 1
+            fi
+            NODE_TYPE="$val"
+            SINK_OR_SOURCE=$([ "NODE_TYPE" == "output" ] && echo "ink" || echo "ource")
+            ;;
+        --listen-timeout-secs)
+            if getOptVal "$@"; then shift; fi
+            LISTEN_TIMEOUT="$val"
+            ;;
+        
+        # Deprecated options
+        --icon-sink)
+            echo "Replaced by --icon-node" >&2
+            exit 1
+            ;;
+        --sink-blacklist)
+            echo "Replaced by --node-blacklist" >&2
+            exit 1
+            ;;
+        --sink-nicknames-from)
+            echo "Replaced by --node-nicknames-from" >&2
+            exit 1
+            ;;
+        --sink-nickname)
+            echo "Replaced by --node-nickname" >&2
+            exit 1
+            ;;
+        --help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unrecognized option: $arg" >&2
+            exit 1
+            ;;
+    esac
+    shift
+done
+
+# Parsing the action from the arguments
+case "$1" in
+    up)
+        volUp
+        ;;
+    down)
+        volDown
+        ;;
+    togmute)
+        volMute toggle
+        ;;
+    mute)
+        volMute mute
+        ;;
+    unmute)
+        volMute unmute
+        ;;
+    sync)
+        volSync
+        ;;
+    listen)
+        listen
+        ;;
+    next-node)
+        nextNode
+        ;;
+    output)
+        output
+        ;;
+    help)
+        usage
+        ;;
+
+    #Deprecated actions
+    next-sink)
+        echo "Replaced by next-node" >&2
+        exit 1
+        ;;
+    "")
+        echo "No action specified. Run \`$0 help\` for more information." >&2
+        ;;
+    *)
+        echo "Unrecognised action: $1" >&2
+        exit 1
+        ;;
+esac
