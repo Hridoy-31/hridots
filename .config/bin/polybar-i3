@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+
+# Terminate already running instances of polybar
+killall -q polybar
+
+# Launch polybar
+polybar -c ~/.config/polybar/i3bar.ini &
